@@ -1,0 +1,46 @@
+steps:
+  # Install dependencies
+  - name: 'node:18'
+    entrypoint: npm
+    args: ['ci']
+
+  # Run tests
+  - name: 'node:18'
+    entrypoint: npm
+    args: ['run', 'test:coverage']
+
+  # Build the application
+  - name: 'node:18'
+    entrypoint: npm
+    args: ['run', 'build:prod']
+    env:
+      - 'REACT_APP_API_BASE_URL=${_API_BASE_URL}'
+      - 'REACT_APP_GTM_ID=${_GTM_ID}'
+
+  # Deploy to Cloud Storage for CDN
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args: ['-m', 'rsync', '-r', '-d', 'build/', 'gs://${_BUCKET_NAME}/']
+
+  # Deploy SSR to Cloud Run
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/easemytrip-web:$COMMIT_SHA', '.']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/easemytrip-web:$COMMIT_SHA']
+
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'easemytrip-web'
+      - '--image=gcr.io/$PROJECT_ID/easemytrip-web:$COMMIT_SHA'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+
+substitutions:
+  _BUCKET_NAME: easemytrip-static-assets
+  _API_BASE_URL: https://api.easemytrip.com
+  _GTM_ID: GTM-XXXXXX
+
+timeout: '1200s'
